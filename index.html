@@ -91,6 +91,8 @@
         #hud-global, #notificador-efectos, .zona-jugador, #control-inferior-contenedor { font-family: Arial, sans-serif; }
         #hud-global { position: absolute; z-index: 5; top: 16px; left: 16px; max-width: min(58vw, 340px); padding: 11px 15px; border-left: 3px solid var(--gold); border-radius: 4px; background: rgba(0,0,0,.43); box-shadow: 0 8px 24px rgba(0,0,0,.18); color: #f8fafc; font-size: .82rem; line-height: 1.6; }
         #notificador-efectos { position: absolute; z-index: 5; top: 68px; right: 16px; display: none; max-width: 42vw; padding: 10px 13px; border: 1px solid rgba(254,202,202,.4); border-radius: 4px; background: rgba(127,29,29,.82); color: #fff; font-size: .75rem; font-weight: 800; text-align: center; }
+        #aviso-evento { position: absolute; z-index: 28; top: 35%; left: 50%; max-width: min(86vw, 560px); padding: 13px 20px; transform: translate(-50%, -50%); border: 2px solid #ffe08a; border-radius: 9px; background: rgba(12,28,24,.96); box-shadow: 0 0 20px rgba(255,224,138,.45), 0 8px 25px rgba(0,0,0,.55); color: #fff3c4; font: 900 clamp(.9rem, 2vw, 1.2rem)/1.35 Arial, sans-serif; text-align: center; pointer-events: none; }
+        #aviso-evento[hidden] { display: none; }
         .zona-jugador { position: absolute; z-index: 2; min-width: 130px; padding: 10px 13px; border: 1px solid rgba(255,255,255,.14); border-radius: 8px; background: rgba(1,20,13,.46); color: white; text-align: center; box-shadow: 0 8px 24px rgba(0,0,0,.12); }
         .zona-jugador strong { font-size: .9rem; }
         .zona-jugador .rol-tag { display: block; margin-top: 4px; color: #f3d58d; font-size: .67rem; font-weight: 800; text-transform: uppercase; }
@@ -226,7 +228,7 @@
                         <div class="reglas-cartas">
                             <article class="regla-carta regla-sietes">
                                 <h4><span class="regla-insignia">7</span> Sietes · cierre obligatorio</h4>
-                                <p>Cuando se juega un 7, quien conserve algún 7 debe jugarlo en su turno. Puede tirar un solo 7 aunque tenga varios. Al terminar los sietes, la baza se limpia y quien jugó el último 7 abre.</p>
+                                <p>Cuando se juega un 7, quien conserve sietes debe tirar todos los que le queden juntos en su turno. Al terminar los sietes, la baza se limpia y quien jugó el último 7 abre.</p>
                             </article>
                             <article class="regla-carta regla-sota">
                                 <h4><span class="regla-insignia">SOTA</span> La Sota · cambia la fuerza</h4>
@@ -285,6 +287,7 @@
         <div id="hud-global"><div>Fase: <strong id="hud-fase">Baza regular</strong></div><div>Régimen: <strong id="hud-regimen">Normal</strong></div><div id="hud-pasados">Pasados: ninguno</div><div id="hud-sala" hidden></div></div>
         <button id="btn-salir-partida" type="button" hidden>Salir de la partida</button>
         <div id="notificador-efectos" role="status">SOTA: SIGUIENTE JUGADA MENOR O IGUAL</div>
+        <div id="aviso-evento" role="status" aria-live="polite" hidden></div>
         <div id="aviso-sota-pueblo" role="status" aria-live="polite" hidden>La carta del pueblo! solo salva al pueblo</div>
         <div id="zonas-rivales" aria-label="Rivales"></div>
         <div id="zona-central-mesa" aria-live="polite"><div id="mesa-vacia-texto">Mesa vacía. Comienza la baza.</div></div>
@@ -337,13 +340,16 @@
             revolucionActiva: false, modificadorSota: false, cierreSietesActivo: false, cantidadSietesMesa: 0,
             jugadoresPasados: new Set(), jugadores: [], cantidadJugadores: 4,
             ordenDescarteHistorico: [], primeraRonda: true, temporizadorCpu: null, rondaFinalizada: false,
-            faseIntercambioFuria: null, solicitudIntercambioFuria: null
+            faseIntercambioFuria: null, solicitudIntercambioFuria: null, resolucionBazaPendiente: null, eventoPartida: null
         };
         let manoLocalSeleccionada = [];
         let seleccionIntercambio = new Set();
         let intercambioPendiente = null;
         let temporizadorComentario = null;
         let temporizadorAvisoSota = null;
+        let temporizadorAvisoEvento = null;
+        let temporizadorResolucionBaza = null;
+        let ultimoEventoPartidaMostrado = null;
         let socketPartida = null;
         let asientoOnline = null;
         let anfitrionOnline = false;
@@ -403,6 +409,88 @@
                 elemento("nube-comentario-humano").hidden = true;
                 temporizadorComentario = null;
             }, 3200);
+        }
+        function mostrarAvisoEvento(texto, duracion = 1800) {
+            const aviso = elemento("aviso-evento");
+            aviso.textContent = texto;
+            aviso.hidden = false;
+            window.clearTimeout(temporizadorAvisoEvento);
+            temporizadorAvisoEvento = window.setTimeout(() => {
+                aviso.hidden = true;
+                temporizadorAvisoEvento = null;
+            }, duracion);
+        }
+        function anunciarEventoPartida(texto, duracion = 1800) {
+            const id = Date.now() + "-" + Math.random();
+            estadoJuego.eventoPartida = { id, texto, duracion };
+            ultimoEventoPartidaMostrado = id;
+            mostrarAvisoEvento(texto, duracion);
+        }
+        function mostrarEventoPartidaPendiente() {
+            const evento = estadoJuego.eventoPartida;
+            if (!evento || evento.id === ultimoEventoPartidaMostrado) return;
+            ultimoEventoPartidaMostrado = evento.id;
+            mostrarAvisoEvento(evento.texto, evento.duracion);
+        }
+        function describirJugada(cartas) {
+            if (cartas.length === 1) {
+                const carta = cartas[0];
+                const nombre = carta.numero === 2 && carta.palo === "oros" ? "el 2" : "un " + rotuloCarta(carta);
+                return nombre + " de " + carta.palo;
+            }
+            const rango = String(cartas[0].numero);
+            if (cartas.length === 2) return "pareja de " + rango + "s";
+            if (cartas.length === 3) return "trío de " + rango + "s";
+            return "cuatro " + rango + "s";
+        }
+        function textoAnuncioGanador(ganadorId, cartas) {
+            return "Ganador de la baza: " + estadoJuego.jugadores[ganadorId].nombre + " con " + describirJugada(cartas);
+        }
+        function programarAnuncioResolucionBaza(retrasoAnuncio = 0) {
+            window.clearTimeout(temporizadorResolucionBaza);
+            const mostrarGanador = () => {
+                const pendiente = estadoJuego.resolucionBazaPendiente;
+                if (!pendiente) return;
+                anunciarEventoPartida(textoAnuncioGanador(pendiente.ganadorId, pendiente.cartas), 2300);
+                publicarEstadoPartida();
+                temporizadorResolucionBaza = window.setTimeout(completarResolucionBaza, 2300);
+            };
+            temporizadorResolucionBaza = window.setTimeout(mostrarGanador, retrasoAnuncio);
+        }
+        function iniciarResolucionBaza(ganadorId, cartas, cierreSietes = false, retrasoAnuncio = 0) {
+            if (estadoJuego.resolucionBazaPendiente) return;
+            estadoJuego.resolucionBazaPendiente = {
+                ganadorId,
+                cartas: cartas.map((carta) => ({ ...carta })),
+                cierreSietes
+            };
+            programarAnuncioResolucionBaza(retrasoAnuncio);
+            actualizarInterfazGraficaMesa();
+            renderizarCartasMesa();
+        }
+        function completarResolucionBaza() {
+            const pendiente = estadoJuego.resolucionBazaPendiente;
+            if (!pendiente) return;
+            estadoJuego.resolucionBazaPendiente = null;
+            temporizadorResolucionBaza = null;
+            if (pendiente.cierreSietes) {
+                estadoJuego.cierreSietesActivo = false;
+                estadoJuego.cantidadSietesMesa = 0;
+            }
+            estadoJuego.ultimaJugadaMesa = null;
+            estadoJuego.modificadorSota = false;
+            estadoJuego.jugadoresPasados.clear();
+            estadoJuego.turnoActivo = estadoJuego.jugadores[pendiente.ganadorId].mano.length > 0
+                ? pendiente.ganadorId
+                : buscarSiguienteJugadorActivo(pendiente.ganadorId);
+            estadoJuego.ultimoEnTirarIndex = estadoJuego.turnoActivo;
+            actualizarInterfazGraficaMesa();
+            renderizarCartasMesa();
+            ejecutarCicloDeTurnoBucle();
+        }
+        function registrarJugadorPasa(jugadorId) {
+            estadoJuego.jugadoresPasados.add(jugadorId);
+            anunciarEventoPartida(estadoJuego.jugadores[jugadorId].nombre + " PASA", 1500);
         }
         function alternarComentariosRapidos() {
             const lista = elemento("lista-comentarios");
@@ -591,16 +679,19 @@
             actualizarInterfazGraficaMesa();
             renderizarCartasMesa();
             reanudarSolicitudIntercambioFuria();
-            ejecutarCicloDeTurnoBucle();
+            if (estadoJuego.resolucionBazaPendiente) {
+                programarAnuncioResolucionBaza();
+            } else ejecutarCicloDeTurnoBucle();
             mostrarEstadoOnline("Partida " + estadoJuego.sala + " reconectada.");
         }
         function procesarAccionRemota(mensaje) {
             const jugadorId = mensaje.seat;
+            if (estadoJuego.resolucionBazaPendiente) return;
             if (estadoJuego.faseIntercambioFuria) return;
             if (estadoJuego.turnoActivo !== jugadorId || estadoJuego.jugadoresPasados.has(jugadorId)) return;
             if (mensaje.action === "pass") {
                 if (!estadoJuego.ultimaJugadaMesa || jugadorDebeResponderConSietes(jugadorId)) return;
-                estadoJuego.jugadoresPasados.add(jugadorId);
+                registrarJugadorPasa(jugadorId);
                 pasarSiguienteTurnoControl();
                 return;
             }
@@ -687,6 +778,11 @@
             elemento("aviso-sota-pueblo").classList.remove("animando");
             window.clearTimeout(temporizadorAvisoSota);
             temporizadorAvisoSota = null;
+            window.clearTimeout(temporizadorAvisoEvento);
+            temporizadorAvisoEvento = null;
+            elemento("aviso-evento").hidden = true;
+            estadoJuego.eventoPartida = null;
+            ultimoEventoPartidaMostrado = null;
             document.body.classList.add("en-partida");
             iniciarNuevaRondaDeJuego();
         }
@@ -709,6 +805,14 @@
             temporizadorComentario = null;
             window.clearTimeout(temporizadorAvisoSota);
             temporizadorAvisoSota = null;
+            window.clearTimeout(temporizadorResolucionBaza);
+            temporizadorResolucionBaza = null;
+            estadoJuego.resolucionBazaPendiente = null;
+            estadoJuego.eventoPartida = null;
+            ultimoEventoPartidaMostrado = null;
+            window.clearTimeout(temporizadorAvisoEvento);
+            temporizadorAvisoEvento = null;
+            elemento("aviso-evento").hidden = true;
             elemento("aviso-sota-pueblo").hidden = true;
             elemento("lista-comentarios").hidden = true;
             elemento("nube-comentario-humano").hidden = true;
@@ -741,6 +845,11 @@
             estadoJuego.jugadores.forEach(ordenarMano);
         }
         function reiniciarBaza() {
+            window.clearTimeout(temporizadorResolucionBaza);
+            temporizadorResolucionBaza = null;
+            estadoJuego.resolucionBazaPendiente = null;
+            estadoJuego.eventoPartida = null;
+            ultimoEventoPartidaMostrado = null;
             estadoJuego.ultimaJugadaMesa = null;
             estadoJuego.ultimoEnTirarIndex = null;
             estadoJuego.jugadoresPasados.clear();
@@ -772,7 +881,11 @@
         function obtenerFuerzaEfectiva(carta) { return estadoJuego.revolucionActiva ? 13 - carta.fuerzaBase : carta.fuerzaBase; }
         function esDosDeOros(carta) { return carta.numero === 2 && carta.palo === "oros"; }
         function soloLeQuedaDosDeOros(jugador) { return jugador.mano.length === 1 && esDosDeOros(jugador.mano[0]); }
-        function validarCombinacion(cartas) { return cartas.length >= 1 && cartas.length <= 4 && cartas.every((carta) => carta.numero === cartas[0].numero); }
+        function validarCombinacion(cartas) {
+            return cartas.length >= 1 && cartas.length <= 4 &&
+                cartas.every((carta) => carta.numero === cartas[0].numero) &&
+                (cartas.length === 1 || !cartas.some(esDosDeOros));
+        }
         function tieneCombinacionDeSietes(jugador) {
             return jugador.mano.some((carta) => carta.numero === 7);
         }
@@ -797,7 +910,9 @@
             if (!validarCombinacion(cartas)) return false;
             if (debeAbrirConTresDeOros() && !cartas.some((carta) => carta.numero === 3 && carta.palo === "oros")) return false;
             if (mesaJuegaSietes()) {
-                return cartas.every((carta) => carta.numero === 7);
+                const jugador = estadoJuego.jugadores[estadoJuego.turnoActivo];
+                const sietesRestantes = jugador ? jugador.mano.filter((carta) => carta.numero === 7).length : 0;
+                return sietesRestantes > 0 && cartas.length === sietesRestantes && cartas.every((carta) => carta.numero === 7);
             }
             if (cartas.length === 1 && esDosDeOros(cartas[0]) && soloLeQuedaDosDeOros(estadoJuego.jugadores[estadoJuego.turnoActivo])) return false;
             if (cartas.length === 1 && esDosDeOros(cartas[0]) && !estadoJuego.revolucionActiva) return true;
@@ -856,15 +971,18 @@
             elemento("hud-regimen").style.color = estadoJuego.revolucionActiva ? "#fca5a5" : "#fbbf24";
             const nombresPasados = estadoJuego.jugadores.filter((jugador) => estadoJuego.jugadoresPasados.has(jugador.id)).map((jugador) => jugador.nombre);
             elemento("hud-pasados").textContent = "Pasados: " + (nombresPasados.length ? nombresPasados.join(", ") : "ninguno");
+            mostrarEventoPartidaPendiente();
             elemento("hud-fase").textContent = estadoJuego.primeraRonda ? "Baza regular" : "Furia · baza regular";
             const alertaSota = elemento("notificador-efectos");
-            alertaSota.textContent = estadoJuego.cierreSietesActivo ? "CIERRE DE SIETES: juega tus 7 si puedes" : estadoJuego.revolucionActiva ? "SOTA: SIGUIENTE JUGADA MAYOR O IGUAL" : "SOTA: SIGUIENTE JUGADA MENOR O IGUAL";
+            alertaSota.textContent = estadoJuego.cierreSietesActivo ? "TODOS LOS 7S FUERA" : estadoJuego.revolucionActiva ? "SOTA: SIGUIENTE JUGADA MAYOR O IGUAL" : "SOTA: SIGUIENTE JUGADA MENOR O IGUAL";
             alertaSota.style.display = estadoJuego.modificadorSota || estadoJuego.cierreSietesActivo ? "block" : "none";
             const avisoTurno = elemento("hud-turno-alerta");
             const humanoDebeJugarSietes = estadoJuego.turnoActivo === indiceHumano() && jugadorDebeResponderConSietes(indiceHumano());
             const humanoDebeAbrirConTresDeOros = estadoJuego.turnoActivo === indiceHumano() && debeAbrirConTresDeOros();
             avisoTurno.classList.toggle("obligado-sietes", humanoDebeJugarSietes);
-            avisoTurno.textContent = estadoJuego.jugadores[estadoJuego.turnoActivo].mano.length === 0
+            avisoTurno.textContent = estadoJuego.resolucionBazaPendiente
+                ? "Resolviendo la baza..."
+                : estadoJuego.jugadores[estadoJuego.turnoActivo].mano.length === 0
                 ? "Ronda terminada"
                 : humanoDebeJugarSietes
                     ? "¡Obligado a jugar tus 7!"
@@ -894,7 +1012,7 @@
         }
         function evaluarHabilitacionBotonesAccion() {
             const humanoId = indiceHumano();
-            const esTurnoHumano = !estadoJuego.faseIntercambioFuria && estadoJuego.turnoActivo === humanoId && !estadoJuego.jugadoresPasados.has(humanoId) && estadoJuego.jugadores[humanoId].mano.length > 0;
+            const esTurnoHumano = !estadoJuego.resolucionBazaPendiente && !estadoJuego.faseIntercambioFuria && estadoJuego.turnoActivo === humanoId && !estadoJuego.jugadoresPasados.has(humanoId) && estadoJuego.jugadores[humanoId].mano.length > 0;
             const obligadoASietes = jugadorDebeResponderConSietes(humanoId);
             elemento("btn-pasar").disabled = !esTurnoHumano || !estadoJuego.ultimaJugadaMesa || obligadoASietes;
             const cartasElegidas = manoLocalSeleccionada.map((indice) => estadoJuego.jugadores[humanoId].mano[indice]).filter(Boolean);
@@ -902,7 +1020,7 @@
         }
         function ejecutarAccionJugar() {
             const humanoId = indiceHumano();
-            if (estadoJuego.faseIntercambioFuria || estadoJuego.turnoActivo !== humanoId || estadoJuego.jugadoresPasados.has(humanoId)) return;
+            if (estadoJuego.resolucionBazaPendiente || estadoJuego.faseIntercambioFuria || estadoJuego.turnoActivo !== humanoId || estadoJuego.jugadoresPasados.has(humanoId)) return;
             const indices = [...manoLocalSeleccionada].sort((a, b) => b - a);
             const cartas = indices.map((indice) => estadoJuego.jugadores[humanoId].mano[indice]).filter(Boolean);
             if (!validarJugadaContraMesa(cartas)) return;
@@ -913,7 +1031,7 @@
             ejecutarJugadaDeJugador(humanoId, cartas.map((carta) => carta.uid));
         }
         function ejecutarJugadaDeJugador(jugadorId, uidsCartas) {
-            if (estadoJuego.faseIntercambioFuria) return;
+            if (estadoJuego.resolucionBazaPendiente || estadoJuego.faseIntercambioFuria) return;
             const jugador = estadoJuego.jugadores[jugadorId];
             if (!jugador || estadoJuego.turnoActivo !== jugadorId || estadoJuego.jugadoresPasados.has(jugadorId)) return;
             const ids = new Set(uidsCartas);
@@ -927,14 +1045,14 @@
         }
         function ejecutarAccionPasar() {
             const humanoId = indiceHumano();
-            if (estadoJuego.faseIntercambioFuria) return;
+            if (estadoJuego.resolucionBazaPendiente || estadoJuego.faseIntercambioFuria) return;
             if (estadoJuego.turnoActivo !== humanoId || !estadoJuego.ultimaJugadaMesa || estadoJuego.jugadoresPasados.has(humanoId)) return;
             if (jugadorDebeResponderConSietes(humanoId)) return;
             if (estadoJuego.modo === "online" && !anfitrionOnline) {
                 enviarAccionOnline("pass");
                 return;
             }
-            estadoJuego.jugadoresPasados.add(humanoId);
+            registrarJugadorPasa(humanoId);
             pasarSiguienteTurnoControl();
         }
         function registrarJugadorDescartado(jugadorId) {
@@ -958,26 +1076,14 @@
             registrarJugadorDescartado(jugadorId);
             if (comprobarFinDeRonda()) return;
             if (estadoJuego.cierreSietesActivo && !estadoJuego.jugadores.some((jugador) => jugador.mano.some((carta) => carta.numero === 7))) {
-                cerrarBazaPorSietes(jugadorId);
+                iniciarResolucionBaza(jugadorId, cartas, true);
                 return;
             }
             if (cartas.length === 1 && esDosDeOros(cartas[0]) && !estadoJuego.revolucionActiva && !estadoJuego.cierreSietesActivo) {
-                estadoJuego.ultimaJugadaMesa = null; estadoJuego.modificadorSota = false; estadoJuego.jugadoresPasados.clear(); estadoJuego.turnoActivo = jugadorId;
-                renderizarCartasMesa(); actualizarInterfazGraficaMesa(); ejecutarCicloDeTurnoBucle(); return;
+                iniciarResolucionBaza(jugadorId, cartas);
+                return;
             }
             pasarSiguienteTurnoControl(estadoJuego.cierreSietesActivo && (iniciaCierreSietes || yaEnCierreSietes) ? 0 : repeticion ? cartas.length : 0);
-        }
-        function cerrarBazaPorSietes(jugadorId) {
-            estadoJuego.ultimaJugadaMesa = null;
-            estadoJuego.modificadorSota = false;
-            estadoJuego.cierreSietesActivo = false;
-            estadoJuego.cantidadSietesMesa = 0;
-            estadoJuego.jugadoresPasados.clear();
-            estadoJuego.turnoActivo = jugadorId;
-            estadoJuego.ultimoEnTirarIndex = jugadorId;
-            actualizarInterfazGraficaMesa();
-            renderizarCartasMesa();
-            ejecutarCicloDeTurnoBucle();
         }
         function comprobarFinDeRonda() {
             if (estadoJuego.ordenDescarteHistorico.length < estadoJuego.jugadores.length - 1 || estadoJuego.rondaFinalizada) return false;
@@ -988,17 +1094,15 @@
             return true;
         }
         function pasarSiguienteTurnoControl(cantidadASaltar = 0) {
+            if (estadoJuego.resolucionBazaPendiente) return;
             limpiarPasadosObligadosPorSietes();
             const conCartas = estadoJuego.jugadores.filter((jugador) => jugador.mano.length > 0);
             const jugadoresQueDebenResponder = conCartas.filter((jugador) => jugador.id !== estadoJuego.ultimoEnTirarIndex);
             const todosHanPasado = estadoJuego.ultimoEnTirarIndex !== null && jugadoresQueDebenResponder.every((jugador) => estadoJuego.jugadoresPasados.has(jugador.id));
             if (todosHanPasado) {
                 const ultimoLanzador = estadoJuego.ultimoEnTirarIndex;
-                estadoJuego.ultimaJugadaMesa = null; estadoJuego.modificadorSota = false;
-                estadoJuego.cierreSietesActivo = false; estadoJuego.cantidadSietesMesa = 0;
-                estadoJuego.jugadoresPasados.clear();
-                estadoJuego.turnoActivo = estadoJuego.jugadores[ultimoLanzador].mano.length > 0 ? ultimoLanzador : buscarSiguienteJugadorActivo(ultimoLanzador);
-                estadoJuego.ultimoEnTirarIndex = estadoJuego.turnoActivo;
+                iniciarResolucionBaza(ultimoLanzador, estadoJuego.ultimaJugadaMesa, false, 1500);
+                return;
             } else estadoJuego.turnoActivo = buscarSiguienteJugadorActivo(estadoJuego.turnoActivo, cantidadASaltar);
             actualizarInterfazGraficaMesa(); renderizarCartasMesa(); ejecutarCicloDeTurnoBucle();
         }
@@ -1026,6 +1130,7 @@
             window.setTimeout(() => aviso.remove(), 2900);
         }
         function ejecutarCicloDeTurnoBucle() {
+            if (estadoJuego.resolucionBazaPendiente) return;
             if (estadoJuego.faseIntercambioFuria) return;
             if (estadoJuego.rondaFinalizada) return;
             if (estadoJuego.ordenDescarteHistorico.length >= estadoJuego.jugadores.length - 1) { comprobarFinDeRonda(); return; }
@@ -1037,7 +1142,7 @@
                     estadoJuego.temporizadorCpu = window.setTimeout(() => {
                         if (estadoJuego.modo === "online" && estadoJuego.turnoActivo === jugadorId &&
                             !estadoJuego.ultimaJugadaMesa && soloLeQuedaDosDeOros(estadoJuego.jugadores[jugadorId])) {
-                            estadoJuego.jugadoresPasados.add(jugadorId);
+                            registrarJugadorPasa(jugadorId);
                             pasarSiguienteTurnoControl();
                         }
                     }, 2300);
@@ -1053,7 +1158,7 @@
                 elemento("hud-turno-alerta").textContent = "El 2 de Oros no puede cerrar tu mano";
                 estadoJuego.temporizadorCpu = window.setTimeout(() => {
                     if (estadoJuego.turnoActivo === humanoId && soloLeQuedaDosDeOros(estadoJuego.jugadores[humanoId])) {
-                        estadoJuego.jugadoresPasados.add(humanoId);
+                        registrarJugadorPasa(humanoId);
                         pasarSiguienteTurnoControl();
                     }
                 }, 2300);
@@ -1070,13 +1175,20 @@
             const grupos = new Map();
             cpu.mano.forEach((carta) => { if (!grupos.has(carta.numero)) grupos.set(carta.numero, []); grupos.get(carta.numero).push(carta); });
             let jugada = null;
-            const cantidadRequerida = estadoJuego.cierreSietesActivo ? 1 : estadoJuego.ultimaJugadaMesa ? estadoJuego.ultimaJugadaMesa.length : 1;
+            const cantidadRequerida = estadoJuego.cierreSietesActivo
+                ? cpu.mano.filter((carta) => carta.numero === 7).length
+                : estadoJuego.ultimaJugadaMesa ? estadoJuego.ultimaJugadaMesa.length : 1;
             const opciones = [];
             grupos.forEach((grupo) => {
-                if (grupo.length < cantidadRequerida) return;
-                const combinacion = grupo.slice(0, cantidadRequerida);
+                const elegibles = cantidadRequerida > 1 ? grupo.filter((carta) => !esDosDeOros(carta)) : grupo;
+                if (elegibles.length < cantidadRequerida) return;
+                const combinacion = elegibles.slice(0, cantidadRequerida);
                 if (validarJugadaContraMesa(combinacion)) opciones.push(combinacion);
             });
+            if (cantidadRequerida > 1 && !estadoJuego.cierreSietesActivo && !estadoJuego.revolucionActiva) {
+                const dosDeOros = cpu.mano.find(esDosDeOros);
+                if (dosDeOros && validarJugadaContraMesa([dosDeOros])) opciones.push([dosDeOros]);
+            }
             opciones.sort((a, b) => obtenerFuerzaEfectiva(a[0]) - obtenerFuerzaEfectiva(b[0]));
             if (opciones.length) jugada = opciones[0];
             if (jugada) {
@@ -1084,11 +1196,11 @@
                 cpu.mano = cpu.mano.filter((carta) => !uids.has(carta.uid));
                 procesarLanzamientoDeCartas(cpuId, jugada);
             } else if (estadoJuego.ultimaJugadaMesa) {
-                estadoJuego.jugadoresPasados.add(cpuId); pasarSiguienteTurnoControl();
+                registrarJugadorPasa(cpuId); pasarSiguienteTurnoControl();
             } else {
                 const cartaBaja = [...cpu.mano].sort((a, b) => obtenerFuerzaEfectiva(a) - obtenerFuerzaEfectiva(b)).find((carta) => !(esDosDeOros(carta) && cpu.mano.length === 1));
                 if (!cartaBaja) {
-                    estadoJuego.jugadoresPasados.add(cpuId);
+                    registrarJugadorPasa(cpuId);
                     pasarSiguienteTurnoControl();
                     return;
                 }
