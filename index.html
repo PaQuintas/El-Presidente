@@ -53,6 +53,25 @@
         .reglas-scroll h3 { margin: 12px 0 4px; color: #fff3d4; font: 800 .78rem Arial, sans-serif; text-transform: uppercase; }
         .reglas-scroll p, .reglas-scroll ul { margin: 0 0 8px; }
         .reglas-scroll ul { padding-left: 18px; }
+        .reglas-intro { margin-bottom: 12px !important; color: #c7d6df; }
+        .reglas-cartas { display: grid; gap: 8px; }
+        .regla-carta { padding: 10px 11px; border: 1px solid rgba(220,240,255,.14); border-left: 3px solid var(--regla-color, #f4c66a); border-radius: 6px; background: rgba(3,10,18,.32); }
+        .regla-carta h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 5px; color: #fff3d4; font: 800 .77rem/1.3 Arial, sans-serif; }
+        .regla-insignia { display: inline-grid; min-width: 34px; min-height: 26px; place-items: center; padding: 3px 6px; border: 1px solid color-mix(in srgb, var(--regla-color, #f4c66a) 55%, transparent); border-radius: 4px; background: color-mix(in srgb, var(--regla-color, #f4c66a) 13%, transparent); color: var(--regla-color, #f4c66a); font-size: .67rem; letter-spacing: .04em; }
+        .regla-carta p { margin: 0; color: #d6e1e8; }
+        .regla-sietes { --regla-color: #a8e6cf; }
+        .regla-sota { --regla-color: #b9c9ff; }
+        .regla-revolucion { --regla-color: #ff9c83; }
+        .regla-corte { --regla-color: #f4c66a; }
+        .reglas-roles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 6px 0 10px; }
+        .regla-rol-mesa { padding: 9px 10px; border: 1px solid rgba(220,240,255,.14); border-radius: 6px; background: rgba(3,10,18,.28); }
+        .regla-rol-mesa h4 { margin: 0 0 6px; color: #f3d58d; font: 800 .72rem Arial, sans-serif; }
+        .regla-rol-mesa ol { display: grid; gap: 3px; margin: 0; padding: 0; list-style: none; counter-reset: rol; }
+        .regla-rol-mesa li { display: flex; align-items: baseline; gap: 6px; color: #d6e1e8; font-size: .76rem; }
+        .regla-rol-mesa li::before { counter-increment: rol; content: counter(rol) "º"; min-width: 19px; color: #a8d4e5; font-size: .68rem; font-weight: 800; }
+        .regla-intercambio { padding: 9px 10px; border-radius: 6px; background: rgba(244,198,106,.08); }
+        .regla-intercambio strong { color: #f3d58d; }
+        @media (max-width: 380px) { .reglas-roles { grid-template-columns: 1fr; } }
         .menu-options, .form-container { display: grid; gap: 12px; }
         .btn-menu { min-height: 52px; padding: 12px 17px; border: 1px solid rgba(226,240,255,.28); border-radius: 6px; background: rgba(255,255,255,.08); color: #f8fafc; cursor: pointer; font: 700 .95rem/1.25 Arial, sans-serif; text-align: left; transition: background .18s ease, border-color .18s ease, transform .18s ease; }
         .btn-menu:hover { transform: translateY(-2px); border-color: rgba(244,198,106,.75); background: rgba(255,255,255,.14); }
@@ -200,16 +219,38 @@
                     <summary>Instrucciones y reglas</summary>
                     <div class="reglas-scroll">
                         <h3>Objetivo y baraja</h3>
-                        <p>Partida de 3 a 6 jugadores con las 48 cartas españolas, incluidos los ochos y nueves. Descarta toda tu mano para conseguir la mejor posición social. Fuerza: 3, 4, 5, 6, 7, 8, 9, Sota (10), Caballo (11), Rey (12), As (1), 2. El 3 de Oros abre la primera ronda; después abre el Culo.</p>
+                        <p class="reglas-intro">Partida de 3 a 6 jugadores con 48 cartas españolas, incluidos ochos y nueves. Descarta toda tu mano para conseguir el mejor puesto. Fuerza ascendente: 3, 4, 5, 6, 7, 8, 9, Sota (10), Caballo (11), Rey (12), As (1) y 2. En la primera ronda abre el 3 de Oros; en las siguientes, abre el Culo.</p>
                         <h3>Jugadas y bazas</h3>
-                        <p>Abre con una, dos, tres o cuatro cartas iguales. Los demás responden con la misma cantidad y fuerza igual o superior. Si repiten el mismo valor, saltan tantos turnos como cartas tenga la jugada. Pasar te excluye solo de la jugada actual. Si alguien juega un valor más alto, todos vuelven a tener opción de responder; si todos pasan, la baza se limpia y quien la ganó abre con una nueva combinación.</p>
-                        <h3>Regla de los 7</h3>
-                        <p>Al jugar un 7, cada jugador debe tirar un 7 en su turno si conserva alguno. Puede tirar uno aunque tenga más. La baza se cierra después del último 7 y la abre quien lo jugó.</p>
+                        <p>Juega una, dos, tres o cuatro cartas del mismo valor. Para responder, juega la misma cantidad con fuerza igual o mayor. Repetir el mismo valor salta a los siguientes tantos jugadores como cartas tenga la combinación; no cuentan como pasados y vuelven a tener turno después. Si pasas, quedas fuera hasta que se limpie la baza. Cuando todos los que pueden responder han jugado o pasado, la baza se limpia y quien hizo la última jugada válida abre.</p>
                         <h3>Cartas especiales</h3>
-                        <ul><li>La Sota obliga a que la siguiente jugada sea menor o igual; en Revolución, mayor o igual.</li><li>Un cuarteto activa la Revolución e invierte la jerarquía durante la ronda.</li><li>El 2 de Oros, jugado como carta individual, corta la baza incluso frente a parejas, tríos o cuartetos. No corta durante Revolución ni cierre de sietes, y no puede cerrar la mano.</li></ul>
-                        <h3>Roles y siguiente ronda</h3>
-                        <p>Roles por orden de descarte: 3 jugadores: Presidente, Neutral, Culo. 4: Presidente, Vicepresidente, Vice-Culo, Culo. 5: Presidente, Vicepresidente, Neutral, Vice-Culo, Culo. 6: Presidente, Vicepresidente, dos Neutrales, Vice-Culo, Culo.</p>
-                        <p>Tras repartir las 48 cartas, el Culo entrega sus dos mejores al Presidente y recibe dos cartas opcionales. Vice-Culo entrega su mejor carta al Vicepresidente y recibe una opcional. Los Neutrales no intercambian.</p>
+                        <div class="reglas-cartas">
+                            <article class="regla-carta regla-sietes">
+                                <h4><span class="regla-insignia">7</span> Sietes · cierre obligatorio</h4>
+                                <p>Cuando se juega un 7, quien conserve algún 7 debe jugarlo en su turno. Puede tirar un solo 7 aunque tenga varios. Al terminar los sietes, la baza se limpia y quien jugó el último 7 abre.</p>
+                            </article>
+                            <article class="regla-carta regla-sota">
+                                <h4><span class="regla-insignia">SOTA</span> La Sota · cambia la fuerza</h4>
+                                <p>La siguiente jugada debe ser de fuerza menor o igual. Durante la Revolución, debe ser mayor o igual.</p>
+                            </article>
+                            <article class="regla-carta regla-revolucion">
+                                <h4><span class="regla-insignia">4 iguales</span> Cuarteto · Revolución</h4>
+                                <p>Jugar cuatro cartas iguales activa o desactiva la Revolución e invierte la jerarquía durante el resto de la ronda.</p>
+                            </article>
+                            <article class="regla-carta regla-corte">
+                                <h4><span class="regla-insignia">2♦</span> 2 de Oros · corta la baza</h4>
+                                <p>Jugado como carta individual, corta incluso una pareja o un trío. No corta durante la Revolución ni el cierre de sietes, y no puede ser la última carta de la mano.</p>
+                            </article>
+                        </div>
+                        <h3>Roles · orden de descarte</h3>
+                        <p class="reglas-intro">El puesto se asigna según quién se queda sin cartas primero:</p>
+                        <div class="reglas-roles">
+                            <section class="regla-rol-mesa"><h4>Mesa de 3</h4><ol><li>Presidente</li><li>Neutral</li><li>Culo</li></ol></section>
+                            <section class="regla-rol-mesa"><h4>Mesa de 4</h4><ol><li>Presidente</li><li>Vicepresidente</li><li>Vice-Culo</li><li>Culo</li></ol></section>
+                            <section class="regla-rol-mesa"><h4>Mesa de 5</h4><ol><li>Presidente</li><li>Vicepresidente</li><li>Neutral</li><li>Vice-Culo</li><li>Culo</li></ol></section>
+                            <section class="regla-rol-mesa"><h4>Mesa de 6</h4><ol><li>Presidente</li><li>Vicepresidente</li><li>Neutral</li><li>Neutral</li><li>Vice-Culo</li><li>Culo</li></ol></section>
+                        </div>
+                        <h3>Intercambio para la siguiente ronda</h3>
+                        <p class="regla-intercambio"><strong>Culo:</strong> entrega sus dos cartas más altas al Presidente; el Presidente elige dos cartas para darle a cambio. <strong>Vice-Culo:</strong> entrega su carta más alta al Vicepresidente; este elige una para darle a cambio. Los Neutrales no intercambian.</p>
                     </div>
                 </details>
             </section>
