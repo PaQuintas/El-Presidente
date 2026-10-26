@@ -86,11 +86,23 @@ function viewForPlayer(snapshot, seat) {
     if (view.resumenIntercambioViceCulo && view.resumenIntercambioViceCulo.seat !== seat) {
         view.resumenIntercambioViceCulo = null;
     }
+    if (view.resumenIntercambioPresidente && view.resumenIntercambioPresidente.seat !== seat) {
+        view.resumenIntercambioPresidente = null;
+    }
+    if (view.resumenIntercambioVicepresidente && view.resumenIntercambioVicepresidente.seat !== seat) {
+        view.resumenIntercambioVicepresidente = null;
+    }
     if (view.intercambioCuloEnCurso && view.intercambioCuloEnCurso.seatCulo !== seat) {
         view.intercambioCuloEnCurso = null;
     }
     if (view.intercambioViceCuloEnCurso && view.intercambioViceCuloEnCurso.seatViceCulo !== seat) {
         view.intercambioViceCuloEnCurso = null;
+    }
+    if (view.intercambioPresidenteEnCurso && view.intercambioPresidenteEnCurso.seatPresidente !== seat) {
+        view.intercambioPresidenteEnCurso = null;
+    }
+    if (view.intercambioVicepresidenteEnCurso && view.intercambioVicepresidenteEnCurso.seatVicepresidente !== seat) {
+        view.intercambioVicepresidenteEnCurso = null;
     }
     return view;
 }
@@ -251,18 +263,18 @@ function addCpuPlayer(socket, room, player) {
         return;
     }
     if (room.phase !== "lobby" || room.players.some((entry) => entry && entry.isCpu)) {
-        sendError(socket, "No se puede añadir a Cademir en este momento.");
+        sendError(socket, "No se puede añadir a CANDIMIR en este momento.");
         return;
     }
     let seat = room.players.findIndex((entry) => !entry);
     if (seat < 0 && room.players.length < room.maxPlayers) seat = room.players.length;
     if (seat < 0 || seat >= room.maxPlayers) {
-        sendError(socket, "No hay sitio libre para añadir a Cademir.");
+        sendError(socket, "No hay sitio libre para añadir a CANDIMIR.");
         return;
     }
     room.players[seat] = {
         seat,
-        name: "Cademir (CPU)",
+        name: "CANDIMIR (CPU)",
         token: null,
         isHost: false,
         isCpu: true,

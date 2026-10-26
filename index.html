@@ -128,6 +128,12 @@
         .aviso-puesto::after { position: absolute; top: 100%; left: 50%; width: 9px; height: 9px; transform: translate(-50%,-50%) rotate(45deg); border-right: 1px solid var(--player-color, #ffe08a); border-bottom: 1px solid var(--player-color, #ffe08a); background: rgba(12,28,24,.97); content: ""; }
         @keyframes aviso-puesto { from { opacity: 0; translate: -50% 8px; scale: .92; } to { opacity: 1; translate: -50% 0; scale: 1; } }
         #zona-central-mesa { position: absolute; top: 47%; left: 50%; display: flex; align-items: center; justify-content: center; gap: clamp(3px, 1vw, 10px); width: min(58vw, 610px); height: 170px; transform: translate(-50%, -50%); border: 1px dashed rgba(239,255,243,.2); border-radius: 14px; background: rgba(3,39,25,.12); }
+        .jugada-anterior, .jugada-actual { display: flex; align-items: center; justify-content: center; gap: clamp(3px, 1vw, 10px); }
+        .jugada-anterior { position: absolute; z-index: 0; top: 30%; left: calc(50% - 82px); opacity: .95; pointer-events: none; transform: translate(-50%, -50%) scale(.94); transform-origin: center; }
+        .jugada-anterior .carta { flex: 0 0 52px; width: 52px; height: 78px; padding: 5px; cursor: default; }
+        .jugada-anterior .carta-indice { font-size: .82rem; }
+        .jugada-anterior .carta-icono-central { font-size: 1rem; }
+        .jugada-actual { position: relative; z-index: 1; }
         #animacion-reparto { position: fixed; z-index: 29; inset: 0; overflow: hidden; pointer-events: none; }
         .carta-reparto { position: fixed; width: 25px; height: 35px; border: 1px solid rgba(255,248,233,.86); border-radius: 4px; background: repeating-linear-gradient(135deg, #8f1d2c 0 4px, #f8e7c4 4px 6px, #172d55 6px 10px); box-shadow: 0 2px 8px rgba(0,0,0,.55); }
             #modal-intercambio { position: absolute; z-index: 40; inset: 0; display: grid; place-items: center; padding: 16px; background: rgba(2,10,8,.78); backdrop-filter: blur(7px); }
@@ -206,6 +212,8 @@
             #zona-central-mesa .carta { flex-basis: 52px; width: 52px; height: 80px; padding: 5px; }
             #zona-central-mesa .carta-indice { font-size: .82rem; }
             #zona-central-mesa .carta-icono-central { font-size: 1rem; }
+            .jugada-anterior .carta { flex-basis: 40px; width: 40px; height: 61px; }
+            .jugada-anterior { top: 30%; left: calc(50% - 64px); transform: translate(-50%, -50%) scale(.94); }
             #control-inferior-contenedor { height: min(232px, 32vh); min-height: 188px; gap: 6px; padding-right: 7px; padding-left: 7px; }
             #estado-humano { font-size: .72rem; }
             #contenedor-mano-humano { padding-top: 24px; }
@@ -248,7 +256,7 @@
                             </article>
                             <article class="regla-carta regla-sota">
                                 <h4><span class="regla-insignia">SOTA</span> La Sota · cambia la fuerza</h4>
-                                <p>La siguiente jugada debe ser de fuerza menor o igual. Durante la Revolución, debe ser mayor o igual.</p>
+                                <p>Sin Revolución, la siguiente jugada debe ser de valor menor o igual en el orden normal. Durante la Revolución, debe ser de valor mayor o igual en ese mismo orden.</p>
                             </article>
                             <article class="regla-carta regla-revolucion">
                                 <h4><span class="regla-insignia">4 iguales</span> Cuarteto · Revolución</h4>
@@ -286,7 +294,7 @@
                     <label for="nombre-creador">Nombre del jugador</label><input id="nombre-creador" name="nombre" type="text" maxlength="24" autocomplete="nickname" required>
                     <label for="codigo-generado-input">Código de sala</label><input id="codigo-generado-input" type="text" readonly aria-readonly="true">
                     <p class="form-error" id="error-montar" aria-live="polite"></p>
-                    <button class="btn-menu" id="btn-anadir-cademir" type="button" hidden>Añadir a Cademir (CPU)</button>
+                    <button class="btn-menu" id="btn-anadir-candimir" type="button" hidden>Añadir a CANDIMIR (CPU)</button>
                     <button class="btn-menu primary" type="submit">Abrir Mesa y Esperar Amigos</button>
                     <button class="btn-menu back" type="button" data-volver-submenu>Volver</button>
                 </form>
@@ -366,12 +374,14 @@
         };
         const coloresPorAsiento = ["#f87171", "#60a5fa", "#fbbf24", "#c084fc", "#34d399", "#fb923c"];
         const estadoJuego = {
-            sala: "local", modo: "cpu", turnoActivo: 0, ultimaJugadaMesa: null, ultimoEnTirarIndex: null,
+            sala: "local", modo: "cpu", turnoActivo: 0, ultimaJugadaMesa: null, jugadaAnteriorMesa: null, ultimoEnTirarIndex: null,
             revolucionActiva: false, modificadorSota: false, cierreSietesActivo: false, cantidadSietesMesa: 0,
             jugadoresPasados: new Set(), jugadores: [], cantidadJugadores: 4,
             ordenDescarteHistorico: [], primeraRonda: true, temporizadorCpu: null, rondaFinalizada: false,
             faseIntercambioFuria: null, solicitudIntercambioFuria: null, intercambioCuloEnCurso: null,
-            intercambioViceCuloEnCurso: null, resumenIntercambioCulo: null, resumenIntercambioViceCulo: null,
+            intercambioViceCuloEnCurso: null, intercambioPresidenteEnCurso: null, intercambioVicepresidenteEnCurso: null,
+            resumenIntercambioCulo: null, resumenIntercambioViceCulo: null,
+            resumenIntercambioPresidente: null, resumenIntercambioVicepresidente: null,
             resolucionBazaPendiente: null, eventoPartida: null
         };
         let manoLocalSeleccionada = [];
@@ -419,7 +429,7 @@
         function crearJugadores(cantidad, nombreHumano) {
             return Array.from({ length: cantidad }, (_, id) => ({
                 id,
-                nombre: id === cantidad - 1 ? nombreHumano : "CPU " + (id + 1),
+                nombre: id === cantidad - 1 ? nombreHumano : id === 0 ? "CANDIMIR" : "CPU " + (id + 1),
                 mano: [],
                 rol: "Neutral",
                 conteoRoles: crearConteoRoles()
@@ -449,7 +459,7 @@
             elemento("form-unirse-mesa").hidden = true;
             elemento("error-montar").textContent = "";
             elemento("error-unirse").textContent = "";
-            elemento("btn-anadir-cademir").hidden = true;
+            elemento("btn-anadir-candimir").hidden = true;
         }
         function volverDesdeSubmenuMulti() {
             if (salaOnlineAsignada) cerrarSesionOnline();
@@ -570,6 +580,7 @@
                 estadoJuego.cantidadSietesMesa = 0;
             }
             estadoJuego.ultimaJugadaMesa = null;
+            estadoJuego.jugadaAnteriorMesa = null;
             estadoJuego.modificadorSota = false;
             estadoJuego.jugadoresPasados.clear();
             estadoJuego.turnoActivo = estadoJuego.jugadores[pendiente.ganadorId].mano.length > 0
@@ -655,13 +666,13 @@
             }
             socketPartida.close();
         }
-        function añadirCademir() {
+        function añadirCandimir() {
             if (!salaOnlineAsignada || !anfitrionOnline ||
                 !socketPartida || socketPartida.readyState !== WebSocket.OPEN) {
-                mostrarEstadoOnline("Solo el anfitrión conectado puede añadir a Cademir.", true);
+                mostrarEstadoOnline("Solo el anfitrión conectado puede añadir a CANDIMIR.", true);
                 return;
             }
-            elemento("btn-anadir-cademir").disabled = true;
+            elemento("btn-anadir-candimir").disabled = true;
             socketPartida.send(JSON.stringify({ type: "add-cpu" }));
         }
         function conectarServidorPartida(solicitud) {
@@ -722,7 +733,7 @@
                 elemento("error-unirse").textContent = mensaje.message || "";
                 elemento("btn-montar").disabled = false;
                 elemento("btn-unirse").disabled = false;
-                elemento("btn-anadir-cademir").disabled = false;
+                elemento("btn-anadir-candimir").disabled = false;
                 return;
             }
             if (mensaje.type === "assigned") {
@@ -741,15 +752,15 @@
                 mostrarEstadoOnline("Sala " + mensaje.room + " · conectado como " + sesion.name + ".");
                 elemento("btn-montar").disabled = false;
                 elemento("btn-unirse").disabled = false;
-                elemento("btn-anadir-cademir").hidden = !mensaje.isHost || mensaje.phase !== "lobby";
-                elemento("btn-anadir-cademir").disabled = false;
+                elemento("btn-anadir-candimir").hidden = !mensaje.isHost || mensaje.phase !== "lobby";
+                elemento("btn-anadir-candimir").disabled = false;
                 return;
             }
             if (mensaje.type === "lobby") {
                 const nombres = mensaje.players.map((jugador) => jugador.name + (jugador.connected ? "" : " (desconectado)"));
                 mostrarEstadoOnline("Sala " + mensaje.room + " · " + nombres.length + "/" + mensaje.maxPlayers + " jugadores: " + nombres.join(", ") + (nombres.length < mensaje.maxPlayers ? " · esperando jugadores..." : ""));
-                elemento("btn-anadir-cademir").hidden = !anfitrionOnline;
-                elemento("btn-anadir-cademir").disabled = mensaje.players.some((jugador) => jugador.cpu);
+                elemento("btn-anadir-candimir").hidden = !anfitrionOnline;
+                elemento("btn-anadir-candimir").disabled = mensaje.players.some((jugador) => jugador.cpu);
                 return;
             }
             if (mensaje.type === "left") {
@@ -821,6 +832,7 @@
                 ? estado.ordenDescarteHistorico.slice(puestosAnteriores.length)
                 : [];
             Object.assign(estadoJuego, estado);
+            estadoJuego.jugadaAnteriorMesa = Array.isArray(estado.jugadaAnteriorMesa) ? estado.jugadaAnteriorMesa : null;
             estadoJuego.jugadoresPasados = new Set(estado.jugadoresPasados || []);
             estadoJuego.temporizadorCpu = null;
             estadoJuego.modo = "online";
@@ -846,6 +858,8 @@
             reanudarSolicitudIntercambioFuria();
             if (estadoJuego.resumenIntercambioCulo) mostrarResumenIntercambio(estadoJuego.resumenIntercambioCulo);
             if (estadoJuego.resumenIntercambioViceCulo) mostrarResumenIntercambio(estadoJuego.resumenIntercambioViceCulo);
+            if (estadoJuego.resumenIntercambioPresidente) mostrarResumenIntercambio(estadoJuego.resumenIntercambioPresidente);
+            if (estadoJuego.resumenIntercambioVicepresidente) mostrarResumenIntercambio(estadoJuego.resumenIntercambioVicepresidente);
             if (animarAlRestaurar || intercambioAcabaDeCompletar) {
                 animarAlRestaurar = false;
                 animarRepartoDeCartas();
@@ -928,8 +942,12 @@
             estadoJuego.solicitudIntercambioFuria = null;
             estadoJuego.intercambioCuloEnCurso = null;
             estadoJuego.intercambioViceCuloEnCurso = null;
+            estadoJuego.intercambioPresidenteEnCurso = null;
+            estadoJuego.intercambioVicepresidenteEnCurso = null;
             estadoJuego.resumenIntercambioCulo = null;
             estadoJuego.resumenIntercambioViceCulo = null;
+            estadoJuego.resumenIntercambioPresidente = null;
+            estadoJuego.resumenIntercambioVicepresidente = null;
             intercambioPendiente = null;
             estadoJuego.cantidadJugadores = jugadoresOnline ? jugadoresOnline.length : Number(elemento("cantidad-jugadores").value);
             estadoJuego.jugadores = jugadoresOnline
@@ -984,8 +1002,12 @@
             estadoJuego.solicitudIntercambioFuria = null;
             estadoJuego.intercambioCuloEnCurso = null;
             estadoJuego.intercambioViceCuloEnCurso = null;
+            estadoJuego.intercambioPresidenteEnCurso = null;
+            estadoJuego.intercambioVicepresidenteEnCurso = null;
             estadoJuego.resumenIntercambioCulo = null;
             estadoJuego.resumenIntercambioViceCulo = null;
+            estadoJuego.resumenIntercambioPresidente = null;
+            estadoJuego.resumenIntercambioVicepresidente = null;
             manoLocalSeleccionada = [];
             seleccionIntercambio.clear();
             intercambioPendiente = null;
@@ -1117,6 +1139,7 @@
             estadoJuego.eventoPartida = null;
             ultimoEventoPartidaMostrado = null;
             estadoJuego.ultimaJugadaMesa = null;
+            estadoJuego.jugadaAnteriorMesa = null;
             estadoJuego.ultimoEnTirarIndex = null;
             estadoJuego.jugadoresPasados.clear();
             estadoJuego.modificadorSota = false;
@@ -1187,7 +1210,11 @@
             if (cartas.length !== estadoJuego.ultimaJugadaMesa.length) return false;
             const fuerzaNueva = obtenerFuerzaEfectiva(cartas[0]);
             const fuerzaMesa = obtenerFuerzaEfectiva(estadoJuego.ultimaJugadaMesa[0]);
-            if (estadoJuego.modificadorSota) return estadoJuego.revolucionActiva ? fuerzaNueva >= fuerzaMesa : fuerzaNueva <= fuerzaMesa;
+            if (estadoJuego.modificadorSota) {
+                const fuerzaNuevaNormal = cartas[0].fuerzaBase;
+                const fuerzaMesaNormal = estadoJuego.ultimaJugadaMesa[0].fuerzaBase;
+                return estadoJuego.revolucionActiva ? fuerzaNuevaNormal >= fuerzaMesaNormal : fuerzaNuevaNormal <= fuerzaMesaNormal;
+            }
             return fuerzaNueva >= fuerzaMesa;
         }
         function rotuloCarta(carta) {
@@ -1269,7 +1296,20 @@
             if (!estadoJuego.ultimaJugadaMesa || estadoJuego.ultimaJugadaMesa.length === 0) {
                 const vacia = document.createElement("div"); vacia.id = "mesa-vacia-texto"; vacia.textContent = "Mesa vacía. Comienza la baza."; zonaMesa.appendChild(vacia); return;
             }
-            estadoJuego.ultimaJugadaMesa.forEach((carta) => zonaMesa.appendChild(renderizarCarta(carta, false, false, -1)));
+            if (estadoJuego.jugadaAnteriorMesa && estadoJuego.jugadaAnteriorMesa.length > 0) {
+                const anterior = document.createElement("div");
+                anterior.className = "jugada-anterior";
+                anterior.setAttribute("role", "group");
+                anterior.setAttribute("aria-label", "Jugada anterior");
+                estadoJuego.jugadaAnteriorMesa.forEach((carta) => anterior.appendChild(renderizarCarta(carta, false, false, -1)));
+                zonaMesa.appendChild(anterior);
+            }
+            const actual = document.createElement("div");
+            actual.className = "jugada-actual";
+            actual.setAttribute("role", "group");
+            actual.setAttribute("aria-label", "Jugada actual");
+            estadoJuego.ultimaJugadaMesa.forEach((carta) => actual.appendChild(renderizarCarta(carta, false, false, -1)));
+            zonaMesa.appendChild(actual);
         }
         function alternarSeleccionCartaMano(indice) {
             if (estadoJuego.faseIntercambioFuria || estadoJuego.turnoActivo !== indiceHumano() || estadoJuego.jugadoresPasados.has(indiceHumano())) return;
@@ -1362,6 +1402,7 @@
             const yaEnCierreSietes = estadoJuego.cierreSietesActivo;
             const repeticion = jugadaAnterior && jugadaAnterior.length === cartas.length && jugadaAnterior[0].numero === cartas[0].numero;
             const iniciaCierreSietes = cartas[0].numero === 7 && !estadoJuego.cierreSietesActivo;
+            estadoJuego.jugadaAnteriorMesa = jugadaAnterior ? jugadaAnterior.map((carta) => ({ ...carta })) : null;
             estadoJuego.ultimaJugadaMesa = cartas;
             estadoJuego.ultimoEnTirarIndex = jugadorId;
             if (iniciaCierreSietes) {
@@ -1567,14 +1608,24 @@
             estadoJuego.jugadores.forEach(ordenarMano);
             const culo = estadoJuego.jugadores.find((jugador) => jugador.rol === "Culo");
             const viceCulo = estadoJuego.jugadores.find((jugador) => jugador.rol === "Vice-Culo");
+            const presidente = estadoJuego.jugadores.find((jugador) => jugador.rol === "Presidente");
+            const vicepresidente = estadoJuego.jugadores.find((jugador) => jugador.rol === "Vicepresidente");
             estadoJuego.intercambioCuloEnCurso = culo
                 ? { seatCulo: culo.id, enviadas: [], recibidas: [] }
                 : null;
             estadoJuego.intercambioViceCuloEnCurso = viceCulo
                 ? { seatViceCulo: viceCulo.id, enviadas: [], recibidas: [] }
                 : null;
+            estadoJuego.intercambioPresidenteEnCurso = presidente
+                ? { seatPresidente: presidente.id, enviadas: [], recibidas: [] }
+                : null;
+            estadoJuego.intercambioVicepresidenteEnCurso = vicepresidente
+                ? { seatVicepresidente: vicepresidente.id, enviadas: [], recibidas: [] }
+                : null;
             estadoJuego.resumenIntercambioCulo = null;
             estadoJuego.resumenIntercambioViceCulo = null;
+            estadoJuego.resumenIntercambioPresidente = null;
+            estadoJuego.resumenIntercambioVicepresidente = null;
             estadoJuego.faseIntercambioFuria = "presidente";
             estadoJuego.solicitudIntercambioFuria = null;
             continuarIntercambioFuria();
@@ -1597,6 +1648,7 @@
                     if (estadoJuego.intercambioCuloEnCurso) {
                         estadoJuego.intercambioCuloEnCurso.enviadas = mejoresCulo.map((carta) => ({ ...carta }));
                     }
+                    registrarCartasRecibidasIntercambio(presidente, mejoresCulo);
                     presidente.mano.push(...mejoresCulo);
                     ordenarMano(presidente);
                     solicitarSeleccionDeCargo(presidente, culo, 2, "Elige dos cartas para entregar al Culo");
@@ -1611,6 +1663,7 @@
                     if (estadoJuego.intercambioViceCuloEnCurso) {
                         estadoJuego.intercambioViceCuloEnCurso.enviadas = [{ ...mejorViceCulo }];
                     }
+                    registrarCartasRecibidasIntercambio(vicepresidente, [mejorViceCulo]);
                     vicepresidente.mano.push(mejorViceCulo);
                     ordenarMano(vicepresidente);
                     solicitarSeleccionDeCargo(vicepresidente, viceCulo, 1, "Elige una carta para entregar al Vice-Culo");
@@ -1633,6 +1686,7 @@
             const origenEsCpu = Boolean(origen.cpu) || estadoJuego.modo === "cpu" && origen.id !== indiceHumano();
             if (origenEsCpu) {
                 const cartas = origen.mano.slice(0, cantidad);
+                registrarCartasEntregadasIntercambio(origen, cartas);
                 registrarCartasRecibidasIntercambio(destino, cartas);
                 transferirCartas(origen, destino, cartas);
                 estadoJuego.solicitudIntercambioFuria = null;
@@ -1675,6 +1729,7 @@
             if (ids.size !== solicitud.cantidad || mensaje.cardUids.some((uid) => typeof uid !== "string") ||
                 !origen || !destino || mensaje.cardUids.some((uid) => !origen.mano.some((carta) => carta.uid === uid))) return;
             const cartas = origen.mano.filter((carta) => ids.has(carta.uid));
+            registrarCartasEntregadasIntercambio(origen, cartas);
             registrarCartasRecibidasIntercambio(destino, cartas);
             transferirCartas(origen, destino, cartas);
             estadoJuego.solicitudIntercambioFuria = null;
@@ -1711,6 +1766,14 @@
             ordenarMano(destino);
         }
         function registrarCartasRecibidasIntercambio(destino, cartas) {
+            if (estadoJuego.intercambioPresidenteEnCurso &&
+                destino.id === estadoJuego.intercambioPresidenteEnCurso.seatPresidente) {
+                estadoJuego.intercambioPresidenteEnCurso.recibidas = cartas.map((carta) => ({ ...carta }));
+            }
+            if (estadoJuego.intercambioVicepresidenteEnCurso &&
+                destino.id === estadoJuego.intercambioVicepresidenteEnCurso.seatVicepresidente) {
+                estadoJuego.intercambioVicepresidenteEnCurso.recibidas = cartas.map((carta) => ({ ...carta }));
+            }
             if (estadoJuego.intercambioCuloEnCurso &&
                 destino.id === estadoJuego.intercambioCuloEnCurso.seatCulo) {
                 estadoJuego.intercambioCuloEnCurso.recibidas = cartas.map((carta) => ({ ...carta }));
@@ -1718,6 +1781,16 @@
             if (estadoJuego.intercambioViceCuloEnCurso &&
                 destino.id === estadoJuego.intercambioViceCuloEnCurso.seatViceCulo) {
                 estadoJuego.intercambioViceCuloEnCurso.recibidas = cartas.map((carta) => ({ ...carta }));
+            }
+        }
+        function registrarCartasEntregadasIntercambio(origen, cartas) {
+            if (estadoJuego.intercambioPresidenteEnCurso &&
+                origen.id === estadoJuego.intercambioPresidenteEnCurso.seatPresidente) {
+                estadoJuego.intercambioPresidenteEnCurso.enviadas = cartas.map((carta) => ({ ...carta }));
+            }
+            if (estadoJuego.intercambioVicepresidenteEnCurso &&
+                origen.id === estadoJuego.intercambioVicepresidenteEnCurso.seatVicepresidente) {
+                estadoJuego.intercambioVicepresidenteEnCurso.enviadas = cartas.map((carta) => ({ ...carta }));
             }
         }
         function confirmarSeleccionIntercambio() {
@@ -1737,6 +1810,7 @@
                 return;
             }
             const cartas = origen.mano.filter((carta) => seleccionIntercambio.has(carta.uid));
+            registrarCartasEntregadasIntercambio(origen, cartas);
             registrarCartasRecibidasIntercambio(destino, cartas);
             transferirCartas(origen, destino, cartas);
             intercambioPendiente = null;
@@ -1773,6 +1847,30 @@
                 estadoJuego.intercambioViceCuloEnCurso = null;
                 mostrarResumenIntercambio(estadoJuego.resumenIntercambioViceCulo);
             }
+            const intercambioPresidente = estadoJuego.intercambioPresidenteEnCurso;
+            if (intercambioPresidente) {
+                estadoJuego.resumenIntercambioPresidente = {
+                    id: "intercambio-presidente-" + Date.now() + "-" + Math.random().toString(36).slice(2),
+                    seat: intercambioPresidente.seatPresidente,
+                    rol: "Presidente",
+                    enviadas: intercambioPresidente.enviadas.map((carta) => ({ ...carta })),
+                    recibidas: intercambioPresidente.recibidas.map((carta) => ({ ...carta }))
+                };
+                estadoJuego.intercambioPresidenteEnCurso = null;
+                mostrarResumenIntercambio(estadoJuego.resumenIntercambioPresidente);
+            }
+            const intercambioVicepresidente = estadoJuego.intercambioVicepresidenteEnCurso;
+            if (intercambioVicepresidente) {
+                estadoJuego.resumenIntercambioVicepresidente = {
+                    id: "intercambio-vicepresidente-" + Date.now() + "-" + Math.random().toString(36).slice(2),
+                    seat: intercambioVicepresidente.seatVicepresidente,
+                    rol: "Vicepresidente",
+                    enviadas: intercambioVicepresidente.enviadas.map((carta) => ({ ...carta })),
+                    recibidas: intercambioVicepresidente.recibidas.map((carta) => ({ ...carta }))
+                };
+                estadoJuego.intercambioVicepresidenteEnCurso = null;
+                mostrarResumenIntercambio(estadoJuego.resumenIntercambioVicepresidente);
+            }
             publicarEstadoPartida();
             estadoJuego.turnoActivo = culo ? culo.id : 0;
             estadoJuego.ultimoEnTirarIndex = culo ? culo.id : null;
@@ -1783,7 +1881,7 @@
         }
         elemento("btn-modo-cpu").addEventListener("click", iniciarModoCpu);
         elemento("btn-salir-partida").addEventListener("click", salirDePartida);
-        elemento("btn-anadir-cademir").addEventListener("click", añadirCademir);
+        elemento("btn-anadir-candimir").addEventListener("click", añadirCandimir);
         elemento("btn-comentarios").addEventListener("click", alternarComentariosRapidos);
         elemento("lista-comentarios").addEventListener("click", enviarComentarioRapido);
         elemento("btn-reanudar-online").addEventListener("click", reanudarPartidaOnline);
