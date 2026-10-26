@@ -58,7 +58,8 @@ function publicRoster(room) {
         .map(({ player, seat }) => ({
             seat,
             name: player.name,
-            connected: Boolean(player.socket && player.socket.readyState === WebSocket.OPEN)
+            connected: Boolean(player.isCpu || player.socket && player.socket.readyState === WebSocket.OPEN),
+            cpu: Boolean(player.isCpu)
         }));
 }
 
@@ -79,6 +80,18 @@ function viewForPlayer(snapshot, seat) {
             player.mano = player.mano.map(() => ({ oculta: true }));
         }
     });
+    if (view.resumenIntercambioCulo && view.resumenIntercambioCulo.seat !== seat) {
+        view.resumenIntercambioCulo = null;
+    }
+    if (view.resumenIntercambioViceCulo && view.resumenIntercambioViceCulo.seat !== seat) {
+        view.resumenIntercambioViceCulo = null;
+    }
+    if (view.intercambioCuloEnCurso && view.intercambioCuloEnCurso.seatCulo !== seat) {
+        view.intercambioCuloEnCurso = null;
+    }
+    if (view.intercambioViceCuloEnCurso && view.intercambioViceCuloEnCurso.seatViceCulo !== seat) {
+        view.intercambioViceCuloEnCurso = null;
+    }
     return view;
 }
 
@@ -220,20 +233,80 @@ function joinRoom(socket, message) {
         sendError(socket, "La partida ya ha empezado. Usa el mismo navegador para reconectarte.");
         return;
     }
-    if (room.players.filter((entry) => entry && entry.socket && entry.socket.readyState === WebSocket.OPEN).length >= room.maxPlayers) {
+    let seat = room.players.findIndex((player) => !player ||
+        !player.isCpu && (!player.socket || player.socket.readyState !== WebSocket.OPEN));
+    if (seat < 0 && room.players.length < room.maxPlayers) seat = room.players.length;
+    if (seat < 0 || seat >= room.maxPlayers) {
         sendError(socket, "La sala está completa.");
         return;
     }
-    let seat = room.players.findIndex((player) => !player || !player.socket || player.socket.readyState !== WebSocket.OPEN);
-    if (seat < 0) seat = room.players.length;
     const player = { seat, name, token: makeToken(), isHost: false, socket };
     room.players[seat] = player;
     attachPlayer(socket, room, player);
 }
 
+function addCpuPlayer(socket, room, player) {
+    if (!player.isHost) {
+        sendError(socket, "Solo quien creó la sala puede añadir una CPU.");
+        return;
+    }
+    if (room.phase !== "lobby" || room.players.some((entry) => entry && entry.isCpu)) {
+        sendError(socket, "No se puede añadir a Cademir en este momento.");
+        return;
+    }
+    let seat = room.players.findIndex((entry) => !entry);
+    if (seat < 0 && room.players.length < room.maxPlayers) seat = room.players.length;
+    if (seat < 0 || seat >= room.maxPlayers) {
+        sendError(socket, "No hay sitio libre para añadir a Cademir.");
+        return;
+    }
+    room.players[seat] = {
+        seat,
+        name: "Cademir (CPU)",
+        token: null,
+        isHost: false,
+        isCpu: true,
+        socket: null
+    };
+    sendLobby(room);
+    startRoomIfFull(room);
+}
+
+function leaveRoom(socket, room, player) {
+    clearTimeout(room.cleanupTimer);
+    room.cleanupTimer = null;
+    if (player.isHost) {
+        rooms.delete(room.code);
+        room.players.filter(Boolean).forEach((recipient) => {
+            if (recipient === player) return;
+            send(recipient.socket, { type: "room-closed" });
+            if (recipient.socket) recipient.socket.close(4002, "The room host left");
+        });
+    } else {
+        room.players[player.seat] = null;
+        socket.roomCode = null;
+        socket.seat = null;
+        socket.isHost = false;
+        send(socket, { type: "left" });
+        sendLobby(room);
+        if (room.players.every((entry) => !entry || !entry.socket)) {
+            room.cleanupTimer = setTimeout(() => {
+                if (room.players.every((entry) => !entry || !entry.socket)) rooms.delete(room.code);
+            }, ROOM_TTL_MS);
+            room.cleanupTimer.unref();
+        }
+        return;
+    }
+    socket.roomCode = null;
+    socket.seat = null;
+    socket.isHost = false;
+    send(socket, { type: "left" });
+}
+
 function startRoomIfFull(room) {
     if (room.phase !== "lobby" || !room.players[0]?.socket ||
-        room.players.filter((player) => player && player.socket && player.socket.readyState === WebSocket.OPEN).length !== room.maxPlayers) return;
+        !Array.from({ length: room.maxPlayers }, (_, seat) => room.players[seat]).every((player) =>
+            player && (player.isCpu || player.socket && player.socket.readyState === WebSocket.OPEN))) return;
     room.phase = "running";
     const message = {
         type: "start",
@@ -262,12 +335,36 @@ function validateSnapshot(snapshot, room) {
         typeof exchange.instruccion !== "string" || exchange.instruccion.length > 120)) {
         return false;
     }
+    const summaries = [
+        [snapshot.resumenIntercambioCulo, "Culo"],
+        [snapshot.resumenIntercambioViceCulo, "Vice-Culo"]
+    ];
+    for (const [summary, role] of summaries) {
+        if (summary && (typeof summary !== "object" || Array.isArray(summary) ||
+            typeof summary.id !== "string" || summary.id.length > 100 ||
+            summary.rol !== role ||
+            !Number.isInteger(summary.seat) || summary.seat < 0 || summary.seat >= room.maxPlayers ||
+            !Array.isArray(summary.enviadas) || summary.enviadas.length > 2 ||
+            !Array.isArray(summary.recibidas) || summary.recibidas.length > 2 ||
+            [...summary.enviadas, ...summary.recibidas].some((card) =>
+                !card || typeof card !== "object" || typeof card.uid !== "string" || card.uid.length > 80))) {
+            return false;
+        }
+    }
     return JSON.stringify(snapshot).length <= MAX_MESSAGE_BYTES;
 }
 
 function handleMessage(socket, message) {
     if (!message || typeof message !== "object" || Array.isArray(message)) {
         sendError(socket, "Mensaje no válido.");
+        return;
+    }
+    if (typeof message.type !== "string") {
+        sendError(socket, "Tipo de mensaje no válido.");
+        return;
+    }
+    if (!new Set(["create", "join", "start", "state", "action", "exchange-response", "add-cpu", "leave"]).has(message.type)) {
+        sendError(socket, "Tipo de mensaje no soportado.");
         return;
     }
     if (message.type === "create") {
@@ -278,6 +375,16 @@ function handleMessage(socket, message) {
     if (message.type === "join") {
         if (socket.roomCode) return sendError(socket, "Ya estás en una sala.");
         joinRoom(socket, message);
+        return;
+    }
+    if (message.type === "leave") {
+        const room = rooms.get(socket.roomCode);
+        const player = room && room.players[socket.seat];
+        if (!room || !player || player.socket !== socket) {
+            sendError(socket, "La conexión ya no pertenece a una sala activa.");
+            return;
+        }
+        leaveRoom(socket, room, player);
         return;
     }
 
@@ -291,6 +398,11 @@ function handleMessage(socket, message) {
     if (message.type === "start") {
         if (!player.isHost) return sendError(socket, "Solo quien creó la sala puede iniciar.");
         startRoomIfFull(room);
+        return;
+    }
+
+    if (message.type === "add-cpu") {
+        addCpuPlayer(socket, room, player);
         return;
     }
 
@@ -347,7 +459,10 @@ function handleMessage(socket, message) {
             requestId: message.requestId,
             cardUids: message.cardUids
         });
+        return;
     }
+
+    sendError(socket, "Tipo de mensaje no soportado.");
 }
 
 server.on("upgrade", (request, socket, head) => {
